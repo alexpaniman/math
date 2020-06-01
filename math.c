@@ -15,6 +15,7 @@ void print_usage(char* name) {
 
 enum operator {
     PLUS, MINUS,
+    UNARY_PLUS, UNARY_MINUS,
     MULTIPLY, DIVIDE,
     POWER, SQRT,
     LEFT_BRACKET,
@@ -34,6 +35,38 @@ struct expression {
     };
     enum expression_type type;
 };
+
+struct stack {
+    struct expression* top;
+    struct expression* bottom;
+};
+
+void push(struct stack* stack, struct expression* expr) {
+    expr->next = stack->top;
+    stack->top = expr;
+
+    if (stack->bottom == NULL) 
+        stack->bottom = stack->top;
+}
+
+void push_back(struct stack* stack, struct expression* expr) {
+    if (stack->bottom != NULL)
+        stack->bottom->next = expr;
+    stack->bottom = expr;
+
+    if (stack->top == NULL)
+        stack->top = stack->bottom;
+}
+
+struct expression* pop(struct stack* stack) {
+    struct expression* top = stack->top;
+    stack->top = top->next;
+    return top;
+}
+
+struct expression* peek(struct stack* stack) {
+    return stack->top;
+}
 
 long long parse_value(int* index, char* text) {
     long long start = 0;
@@ -62,7 +95,7 @@ long long parse_value(int* index, char* text) {
 
 struct expression* tokenize(char* text) {
     struct expression* expr = malloc(sizeof *expr);
-    struct expression* result = expr;
+    struct expression* expr_top = expr;
 
     enum expression_type last_expr;
     char symbol; long long value;
@@ -133,7 +166,7 @@ struct expression* tokenize(char* text) {
         }
     }
 
-    return result;
+    return expr_top;
 }
 
 void print_expression(struct expression* expr) {
@@ -142,34 +175,40 @@ void print_expression(struct expression* expr) {
         switch(current->type) {
             case OPERATOR:
                 switch(current->operator) {
+                    case UNARY_MINUS:
+                        printf(" [unary -]");
+                        break;
+                    case UNARY_PLUS:
+                        printf(" [unary +]");
+                        break;
                     case PLUS:
-                        printf(" + ");
+                        printf(" [+] ");
                         break;
                     case MINUS:
-                        printf(" - ");
+                        printf(" [-] ");
                         break;
                     case DIVIDE:
-                        printf(" / ");
+                        printf(" [/] ");
                         break;
                     case MULTIPLY:
-                        printf(" * ");
+                        printf(" [*] ");
                         break;
                     case POWER:
-                        printf(" ^ ");
+                        printf(" [^] ");
                         break;
                     case SQRT:
-                        printf("sqrt ");
+                        printf(" [sqrt] ");
                         break;
                     case LEFT_BRACKET:
-                        printf("(");
+                        printf(" [(] ");
                         break;
                     case RIGHT_BRACKET:
-                        printf(")");
+                        printf(" [)] ");
                         break;
                 }
                 break;
             case VALUE:
-                printf("%lld", current->value);
+                printf(" [%lld] ", current->value);
                 break;
         }
 
@@ -177,13 +216,106 @@ void print_expression(struct expression* expr) {
     }
 }
 
-struct expression to_rpn(struct expression expr) {
-    struct expression rpn_expr;
+struct priority_map {
+    enum operator operator;
+    short priority;
+};
 
-    // TODO: convert to RPN
-    return rpn_expr;
+struct priority_map const priority[] = { 
+    { PLUS , 0 },
+    { MINUS, 0 },
+
+    { MULTIPLY, 1 },
+    { DIVIDE  , 1 },
+
+    { POWER, 2 }
+};
+
+short get_priority(enum operator operator) {
+    for (size_t i = 0; i < sizeof(priority) / sizeof(*priority); ++ i) {
+        struct priority_map map = priority[i];
+
+        if (map.operator == operator)
+            return map.priority;
+    }
+   
+    return -1;
+}
+
+struct stack* to_rpn(struct expression* expr) {
+    struct stack* rpn_expr_stack = malloc(sizeof *rpn_expr_stack);
+    struct stack* operator_stack = malloc(sizeof *operator_stack);
+
+    struct expression* rpn_stack_bottom = rpn_expr_stack->top;
+
+    struct expression* current = expr;
+
+    while(current != NULL) {
+        struct expression* next = current->next;
+
+        switch(current->type) {
+            case VALUE:
+                push_back(rpn_expr_stack, current);
+                break;
+
+            case OPERATOR: {
+                if (current->operator == LEFT_BRACKET) {
+                    push(operator_stack, current);
+                    break;
+                }
+
+                if (current->operator == RIGHT_BRACKET) {
+                    struct expression* current_expr;
+
+                    while (true) {
+                        if (peek(operator_stack) == NULL) {
+                            printf("error: missing )");
+                            exit(1);
+                        }
+                        
+                        if (peek(operator_stack)->operator == LEFT_BRACKET) {
+                            pop(operator_stack);
+                            break;
+                        }
+
+                        push_back(rpn_expr_stack, pop(operator_stack));
+                    }
+
+                    break;
+                }
+
+                short curr_priority = get_priority(current->operator);
+                short last_priority = peek(operator_stack) == NULL? -1 : get_priority(
+                    peek(operator_stack)->operator
+                );
+                
+                while (curr_priority <= last_priority) {
+                    if (peek(operator_stack) == NULL)
+                        break;
+                    
+                    push_back(rpn_expr_stack, pop(operator_stack));
+
+                    last_priority = peek(operator_stack) == NULL? -1 : get_priority(
+                        peek(operator_stack)->operator
+                    );
+                }
+
+                push(operator_stack, current);
+            }
+        }
+
+        current = next;
+    }
+
+    while (peek(operator_stack) != NULL)
+        push_back(rpn_expr_stack, pop(operator_stack));
+
+    return rpn_expr_stack;
 }
 
 int main(int argc, char** argv) {
-    print_expression(tokenize("2000 + (sqrt (2 * 2)) * 78^2"));
+    // TODO: make unary minus work
+//    print_expression(tokenize("-2000 + (sqrt (2 * 2)) * 78^2"));
+//    printf("\n");
+    print_expression(to_rpn(tokenize("2^3/(5*5) + 10"))->top);
 }
