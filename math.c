@@ -68,147 +68,181 @@ struct expression* peek(struct stack* stack) {
     return stack->top;
 }
 
-long long parse_value(int* index, char* text) {
-    long long start = 0;
-    bool is_negative = false;
+void push_back_operator(struct stack* stack, enum operator operator) {
+    struct expression* expr = malloc(sizeof *expr);
 
-    switch(text[*index]) {
-        case '-':
-            is_negative = true;
-        case '+':
-            ++ *index;
-        default:
-            for (;; ++ *index) {
-                short digit = text[*index] - '0';
-                if (digit < 0 || digit > 9) {
-                    -- *index;
-                    break;
-                }
+    expr->type = OPERATOR;
+    expr->operator = operator;
 
-                start *= 10;
-                start += digit;
-            }
-    }
-
-    return (is_negative ? -1 : 1) * start;
+    push_back(stack, expr);
 }
 
-struct expression* tokenize(char* text) {
+void push_back_value(struct stack* stack, long long value) {
     struct expression* expr = malloc(sizeof *expr);
-    struct expression* expr_top = expr;
 
-    enum expression_type last_expr;
+    expr->type = VALUE;
+    expr->operator = value;
+
+    push_back(stack, expr);
+}
+
+long long parse_value(int* index, char* text) {
+    bool was_set = false;
+    long long start = 0;
+
+    while (true) {
+        short digit = text[*index] - '0';
+
+        if (digit <= 9 && digit >= 0) {
+            start *= 10;
+            start += digit;
+            ++ *index;
+
+            was_set = true;
+        } else return was_set ? start : -1;
+    }
+}
+
+void check_sqrt(int* index, char* text) {
+    for (int j = 0; j < 4; ++ j, ++ *index)
+        if (text[*index] != "sqrt"[j]) {
+            printf("error: expected '%c' in sqrt instead of '%c'",
+                   "sqrt"[j], text[*index]);
+            exit(1);
+        }
+
+    -- *index;
+}
+
+struct stack* tokenize(char* text) {
+    struct stack* stack = malloc(sizeof *stack);
+
+    bool should_be_unary = false;
     char symbol; long long value;
 
     for (int i = 0; (symbol = text[i]) != '\0'; ++ i) {
-        expr->type = OPERATOR;
-        switch(symbol) {
-            case ' ':
-                continue;
-            case '-':
-                if (last_expr == VALUE) {
-                    expr->operator = MINUS;
-                } else {
-                    expr->type = VALUE;
-                    expr->value = parse_value(&i, text);
-                    last_expr = VALUE;
-                }
-                break;
-            case '+':
-                if (last_expr == VALUE) {
-                    expr->operator = PLUS;
-                } else {
-                    expr->type = VALUE;
-                    expr->value = parse_value(&i, text);
-                    last_expr = VALUE;
-                }
-                break;
-            case '/':
-                expr->operator = DIVIDE;
-                last_expr = OPERATOR;
-                break;
-            case '*':
-                expr->operator = MULTIPLY;
-                last_expr = OPERATOR;
-                break;
-            case '^':
-                expr->operator = POWER;
-                last_expr = OPERATOR;
-                break;
-            case '(':
-                expr->operator = LEFT_BRACKET;
-                last_expr = OPERATOR;
-                break;
-            case ')':
-                expr->operator = RIGHT_BRACKET;
-                last_expr = OPERATOR;
-                break;
-            case 's':
-                for (int j = 0; j < 4; ++ j, ++ i)
-                    if (text[i] != "sqrt"[j]) {
-                        printf("error: expected %c", "sqrt"[j]);
-                        exit(1);
-                    }
+        if (symbol == ' ')
+            continue;
 
-                expr->operator = SQRT;
-                last_expr = OPERATOR;
-                break;
-            default:
-                expr->type = VALUE;
-                expr->value = parse_value(&i, text);
-                last_expr = VALUE;
-                break;
+        long long number = parse_value(&i, text);
+        if (number > 0) {
+            push_back_value(stack, number);
+            -- i;
+            should_be_unary = false;
+            continue;
         }
-        
-        if (text[i + 1] != '\0') {
-            struct expression* next_expr = malloc(sizeof *next_expr);
-            expr->next = next_expr; expr = next_expr;
+
+        if (should_be_unary)
+            switch(symbol) {
+                case '+':
+                    push_back_operator(stack, UNARY_PLUS);
+                    break;
+
+                case '-':
+                    push_back_operator(stack, UNARY_MINUS);
+                    break;
+
+                case 's':
+                    check_sqrt(&i, text);
+                    push_back_operator(stack, SQRT);
+                    break;
+
+                default:
+                    printf("error: '%c' is not an unary operator!", symbol);
+                    exit(1);
+            }
+
+        else {
+            should_be_unary = true;
+
+            switch(symbol) {
+                case '-':
+                    push_back_operator(stack, MINUS);
+                    break;
+    
+                case '+':
+                    push_back_operator(stack, PLUS);
+                    break;
+    
+                case '/':
+                    push_back_operator(stack, DIVIDE);
+                    break;
+    
+                case '*':
+                    push_back_operator(stack, MULTIPLY);
+                    break;
+    
+                case '^':
+                    push_back_operator(stack, POWER);
+                    break;
+    
+                case '(':
+                    push_back_operator(stack, LEFT_BRACKET);
+                    break;
+    
+                case ')':
+                    push_back_operator(stack, RIGHT_BRACKET);
+                    should_be_unary = false;
+                    break;
+    
+                case 's':
+                    check_sqrt(&i, text);
+                    push_back_operator(stack, SQRT);
+                    break;
+    
+                default:
+                    printf("error: unexpected symbol '%c'", symbol);
+                    exit(1);
+            }
         }
     }
 
-    return expr_top;
+    return stack;
 }
 
-void print_expression(struct expression* expr) {
-    struct expression* current = expr;
+void print_expression(struct stack* stack) {
+    struct expression* current = stack->top;
+
     while (current != NULL) {
+
         switch(current->type) {
             case OPERATOR:
                 switch(current->operator) {
                     case UNARY_MINUS:
-                        printf(" [unary -]");
+                        printf("[unary -] ");
                         break;
                     case UNARY_PLUS:
-                        printf(" [unary +]");
+                        printf("[unary +] ");
                         break;
                     case PLUS:
-                        printf(" [+] ");
+                        printf("[+] ");
                         break;
                     case MINUS:
-                        printf(" [-] ");
+                        printf("[-] ");
                         break;
                     case DIVIDE:
-                        printf(" [/] ");
+                        printf("[/] ");
                         break;
                     case MULTIPLY:
-                        printf(" [*] ");
+                        printf("[*] ");
                         break;
                     case POWER:
-                        printf(" [^] ");
+                        printf("[^] ");
                         break;
                     case SQRT:
-                        printf(" [sqrt] ");
+                        printf("[sqrt] ");
                         break;
                     case LEFT_BRACKET:
-                        printf(" [(] ");
+                        printf("[(] ");
                         break;
                     case RIGHT_BRACKET:
-                        printf(" [)] ");
+                        printf("[)] ");
                         break;
                 }
                 break;
+
             case VALUE:
-                printf(" [%lld] ", current->value);
+                printf("[%lld] ", current->value);
                 break;
         }
 
@@ -221,14 +255,17 @@ struct priority_map {
     short priority;
 };
 
-struct priority_map const priority[] = { 
+struct priority_map const priority[] = {
     { PLUS , 0 },
     { MINUS, 0 },
 
     { MULTIPLY, 1 },
     { DIVIDE  , 1 },
 
-    { POWER, 2 }
+    { POWER, 2 },
+
+    { UNARY_PLUS , 3 },
+    { UNARY_MINUS, 3 },
 };
 
 short get_priority(enum operator operator) {
@@ -242,13 +279,13 @@ short get_priority(enum operator operator) {
     return -1;
 }
 
-struct stack* to_rpn(struct expression* expr) {
+struct stack* to_rpn(struct stack* stack) {
     struct stack* rpn_expr_stack = malloc(sizeof *rpn_expr_stack);
     struct stack* operator_stack = malloc(sizeof *operator_stack);
 
     struct expression* rpn_stack_bottom = rpn_expr_stack->top;
 
-    struct expression* current = expr;
+    struct expression* current = stack->top;
 
     while(current != NULL) {
         struct expression* next = current->next;
@@ -317,5 +354,5 @@ int main(int argc, char** argv) {
     // TODO: make unary minus work
 //    print_expression(tokenize("-2000 + (sqrt (2 * 2)) * 78^2"));
 //    printf("\n");
-    print_expression(to_rpn(tokenize("2^3/(5*5) + 10"))->top);
+    print_expression(tokenize("sqrt - sqrt +++ sqrt  - -10"));
 }
