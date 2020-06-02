@@ -132,6 +132,22 @@ struct stack* tokenize(char* text) {
             continue;
         }
 
+        switch(symbol) {
+            case 's':
+                check_sqrt(&i, text);
+                push_back_operator(stack, SQRT);
+                continue;
+
+            case '(':
+                push_back_operator(stack, LEFT_BRACKET);
+                continue;
+
+            case ')':
+                push_back_operator(stack, RIGHT_BRACKET);
+                should_be_unary = false;
+                continue;   
+        }
+
         if (should_be_unary)
             switch(symbol) {
                 case '+':
@@ -140,11 +156,6 @@ struct stack* tokenize(char* text) {
 
                 case '-':
                     push_back_operator(stack, UNARY_MINUS);
-                    break;
-
-                case 's':
-                    check_sqrt(&i, text);
-                    push_back_operator(stack, SQRT);
                     break;
 
                 default:
@@ -175,21 +186,7 @@ struct stack* tokenize(char* text) {
                 case '^':
                     push_back_operator(stack, POWER);
                     break;
-    
-                case '(':
-                    push_back_operator(stack, LEFT_BRACKET);
-                    break;
-    
-                case ')':
-                    push_back_operator(stack, RIGHT_BRACKET);
-                    should_be_unary = false;
-                    break;
-    
-                case 's':
-                    check_sqrt(&i, text);
-                    push_back_operator(stack, SQRT);
-                    break;
-    
+
                 default:
                     printf("error: unexpected symbol '%c'", symbol);
                     exit(1);
@@ -264,8 +261,9 @@ struct priority_map const priority[] = {
 
     { POWER, 2 },
 
+    { SQRT       , 3 },
     { UNARY_PLUS , 3 },
-    { UNARY_MINUS, 3 },
+    { UNARY_MINUS, 3 }
 };
 
 short get_priority(enum operator operator) {
@@ -277,6 +275,18 @@ short get_priority(enum operator operator) {
     }
    
     return -1;
+}
+
+bool is_unary_operator(enum operator operator) {
+    switch(operator) {
+        case SQRT:
+        case UNARY_MINUS:
+        case UNARY_PLUS:
+            return true;
+
+        default:
+            return false;
+    }
 }
 
 struct stack* to_rpn(struct stack* stack) {
@@ -321,6 +331,11 @@ struct stack* to_rpn(struct stack* stack) {
                     break;
                 }
 
+                if (is_unary_operator(current->operator)) {
+                    push(operator_stack, current);
+                    break;
+                }
+
                 short curr_priority = get_priority(current->operator);
                 short last_priority = peek(operator_stack) == NULL? -1 : get_priority(
                     peek(operator_stack)->operator
@@ -351,8 +366,17 @@ struct stack* to_rpn(struct stack* stack) {
 }
 
 int main(int argc, char** argv) {
-    // TODO: make unary minus work
-//    print_expression(tokenize("-2000 + (sqrt (2 * 2)) * 78^2"));
-//    printf("\n");
-    print_expression(tokenize("sqrt - sqrt +++ sqrt  - -10"));
+//  char* expression = "sqrt - sqrt +++ sqrt  - -10";
+    char* expression = "2 +++++ - 3 * 4 - 1^(3^2 + 4 * (3 + 2)) / 2";
+//  char* expression = "1 ++ 2";
+
+    printf("------------------------------------------------------\n");
+    printf("expression: %s\n", expression);
+   
+    struct stack* tokenized = tokenize(expression);
+    printf("tokenized: "); print_expression(tokenized); printf("\n");
+
+    struct stack* rpn = to_rpn(tokenized);
+    printf("rpn:       "); print_expression(rpn); printf("\n");
+    printf("------------------------------------------------------\n");
 }
