@@ -1,12 +1,1 @@
-[
-    {
-        "arguments": [
-            "gcc",
-            "-c",
-            "-O2",
-            "math.c"
-        ],
-        "directory": "/home/alex/projects/math",
-        "file": "math.c"
-    }
-]
+[]
