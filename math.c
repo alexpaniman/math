@@ -277,7 +277,7 @@ struct stack* to_rpn(struct stack* stack) {
             short last_priority = peek(operator_stack) == NULL?
                 -1 : get_priority(peek(operator_stack)->operator);
     
-            if (curr_priority >= last_priority)
+            if (curr_priority > last_priority)
                 break;
             
             push_back(rpn_expr_stack, pop(operator_stack));
