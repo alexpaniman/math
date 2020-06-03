@@ -2,9 +2,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<stdbool.h>
-
-#include <gmp.h>
-#include <mpfr.h>
+#include<string.h>
 
 enum operator {
     PLUS, MINUS, UNARY_PLUS, POWER,
@@ -20,7 +18,7 @@ struct expression {
     struct expression* next;
 
     union {
-        long long value;
+        long double value;
         enum operator operator;
     };
     enum expression_type type;
@@ -67,18 +65,18 @@ void push_back_operator(struct stack* stack, enum operator operator) {
     push_back(stack, expr);
 }
 
-void push_back_value(struct stack* stack, long long value) {
+void push_back_value(struct stack* stack, long double value) {
     struct expression* expr = malloc(sizeof *expr);
 
     expr->type = VALUE;
-    expr->operator = value;
+    expr->value = value;
 
     push_back(stack, expr);
 }
 
-long long parse_value(int* index, char* text) {
+long double parse_value(int* index, char* text) {
     bool was_set = false;
-    long long start = 0;
+    long double start = 0;
 
     while (true) {
         short digit = text[*index] - '0';
@@ -104,18 +102,16 @@ void check_sqrt(int* index, char* text) {
     -- *index;
 }
 
-struct stack* tokenize(char* text) {
-    struct stack* stack = malloc(sizeof *stack);
-
+struct stack* tokenize(struct stack* stack, char* text) {
     bool should_be_unary = false;
-    char symbol; long long value;
+    char symbol; long double value;
 
     for (int i = 0; (symbol = text[i]) != '\0'; ++ i) {
         if (symbol == ' ')
             continue;
 
-        long long number = parse_value(&i, text);
-        if (number > 0) {
+        long double number = parse_value(&i, text);
+        if (number >= 0) {
             push_back_value(stack, number);
             -- i;
             should_be_unary = false;
@@ -256,17 +252,18 @@ struct stack* to_rpn(struct stack* stack) {
 
             while (true) {
                 if (peek(operator_stack) == NULL) {
-                    printf("error: missing )");
+                    printf("error: missing (");
                     exit(1);
                 }
                 
                 if (peek(operator_stack)->operator == LEFT_BRACKET) {
                     pop(operator_stack);
-                    continue;
+                    break;
                 }
 
                 push_back(rpn_expr_stack, pop(operator_stack));
             }
+            continue;
         }
 
         if (is_unary_operator(operator)) {
@@ -280,7 +277,7 @@ struct stack* to_rpn(struct stack* stack) {
             short last_priority = peek(operator_stack) == NULL?
                 -1 : get_priority(peek(operator_stack)->operator);
     
-            if (curr_priority > last_priority)
+            if (curr_priority >= last_priority)
                 break;
             
             push_back(rpn_expr_stack, pop(operator_stack));
@@ -301,8 +298,8 @@ struct stack* to_rpn(struct stack* stack) {
     struct expression* expr_snd = pop(stack); \
     struct expression* expr_fst = peek(stack); \
 \
-    long long fst = expr_fst->value; \
-    long long snd = expr_snd->value; \
+    long double fst = expr_fst->value; \
+    long double snd = expr_snd->value; \
 \
     expr_fst->value = operation; \
 \
@@ -310,62 +307,8 @@ struct stack* to_rpn(struct stack* stack) {
 }
 
 #define perform_unary_on_top(stack, operation) { \
-    long long value = peek(stack)->value; \
+    long double value = peek(stack)->value; \
     peek(stack)->value = operation; \
-}
-
-long double calculate_rpn_expression(struct stack* stack) {
-    struct expression* current = stack->top;
-    struct stack calculation;
-
-    while(current != NULL) {
-        struct expression* next = current->next;
-
-        switch(current->type) {
-            case VALUE:
-                push(&calculation, current);
-                break;
-
-            case OPERATOR: switch(current->operator) {
-                case PLUS:
-                    perform_on_top(&calculation, fst + snd)
-                    break;
-
-                case MINUS:
-                    perform_on_top(&calculation, fst - snd)
-                    break;
-                
-                case DIVIDE:
-                    perform_on_top(&calculation, fst / snd)
-                    break;
-
-                case MULTIPLY:
-                    perform_on_top(&calculation, fst * snd)
-                    break;
-                
-                case POWER: 
-                    perform_on_top(&calculation, pow(fst, snd))
-                    break;
-
-                case SQRT:
-                    perform_unary_on_top(&calculation, sqrt(value))
-                    break;
-                
-                case UNARY_MINUS:
-                    perform_unary_on_top(&calculation, - value)
-                    break;
-
-                case UNARY_PLUS:
-                    break;
-
-                default: exit(1);
-            }
-        }
-
-        current = next;
-    }
-
-    return peek(&calculation)->value;
 }
 
 void print_expression(struct stack* stack) {
@@ -410,7 +353,7 @@ void print_expression(struct stack* stack) {
                 break;
 
             case VALUE:
-                printf("[%lld] ", current->value);
+                printf("[%Lf] ", current->value);
                 break;
         }
 
@@ -418,11 +361,72 @@ void print_expression(struct stack* stack) {
     }
 }
 
+long double calculate_rpn_expression(struct stack* stack) {
+    struct expression* current = stack->top;
+    struct stack calculation = { NULL, NULL }; 
+    while(current != NULL) {
+        struct expression* next = current->next;
+
+        switch(current->type) {
+            case VALUE:
+                push(&calculation, current);
+                break;
+
+            case OPERATOR: switch(current->operator) {
+                case PLUS:
+                    perform_on_top(&calculation, fst + snd)
+                    break;
+
+                case MINUS:
+                    perform_on_top(&calculation, fst - snd)
+                    break;
+                
+                case DIVIDE:
+                    perform_on_top(&calculation, fst / snd)
+                    break;
+
+                case MULTIPLY:
+                    perform_on_top(&calculation, fst * snd)
+                    break;
+                
+                case POWER: 
+                    perform_on_top(&calculation, pow(fst, snd))
+                    break;
+
+                case SQRT:
+                    perform_unary_on_top(&calculation, sqrt(value))
+                    break;
+                
+                case UNARY_MINUS:
+                    perform_unary_on_top(&calculation, - value)
+                    break;
+
+                case UNARY_PLUS:
+                    break;
+
+                default: exit(1);
+            } }
+
+        current = next;
+    }
+
+    struct expression* expr = pop(&calculation);
+    long double result = expr->value;
+    
+    if (calculation.top != NULL) {
+        printf("error: wrong expression");
+        exit(1);
+    }
+
+    free(expr);
+    return result;
+}
+
 void print_usage(char* name) {
     printf(
-        "Usage: %s [~PRECISION] [EXPRESSION]\n"
+        "Usage: %s [:PRECISION] [EXPRESSION]\n"
         "Calculate the expression.\n\n"
-        "Example: %s 2 + 2 * 2\n\n"
+        "Example: %s :2 '2 + 2 * 2'\n\n"
         "If no expression is specified read from standard input instead.\n",
 
         name, name
@@ -430,22 +434,35 @@ void print_usage(char* name) {
 }
 
 int main(int argc, char** argv) {
-//  char* expression = "sqrt - sqrt +++ sqrt  - -10";
-//  char* expression = "2 - 3 * 4 - 1^(3^2 + 4 * (3 + 2)) / 2";
-    char* expression = "10 - 20";
-//  char* expression = "1 ++ 2";
-//  char* expression = "";
+    if (argc < 2) {
+        print_usage(argv[0]);
+        exit(1);
+    }
 
-    printf("------------------------------------------------------\n");
-    printf("expression: %s\n", expression);
-   
-    struct stack* tokenized = tokenize(expression);
-    printf("tokenized:  "); print_expression(tokenized); printf("\n");
+    int precision, start = 1;
+    if (argv[1][0] == ':') {
+        int index = 1;
 
-    struct stack* rpn = to_rpn(tokenized);
-    printf("rpn:        "); print_expression(rpn); printf("\n");
+        precision = parse_value(&index, argv[1]);
+        if (precision < 0)
+            precision = 3;
 
+        ++ start;
+    }
+
+    struct stack* stack = malloc(sizeof *stack);
+
+    for (int i = start; i < argc; ++ i)
+        tokenize(stack, argv[i]);
+    
+    struct stack* rpn = to_rpn(stack);
     long double result = calculate_rpn_expression(rpn);
-    printf("result:     %Lf\n", result);
-    printf("------------------------------------------------------\n");
+
+    free(rpn);
+    free(stack);
+
+    char format[6];
+    sprintf(format, "%%.%dLf", precision);
+
+    printf(format, result);
 }
