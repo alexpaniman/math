@@ -1,2 +1,2 @@
 math:
-	gcc -lm -O2 math.c -o math
+	gcc -lm -O3 math.c -o math
