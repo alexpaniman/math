@@ -44,6 +44,8 @@ void push_back(struct stack* stack, struct expression* expr) {
 
     if (stack->top == NULL)
         stack->top = stack->bottom;
+
+    expr->next = NULL;
 }
 
 struct expression* pop(struct stack* stack) {
@@ -76,18 +78,39 @@ void push_back_value(struct stack* stack, long double value) {
 
 long double parse_value(int* index, char* text) {
     bool was_set = false;
-    long double start = 0;
+    long double before_dot = 0, after_dot = -1;
 
     while (true) {
-        short digit = text[*index] - '0';
+        char symbol = text[*index];
 
-        if (digit <= 9 && digit >= 0) {
-            start *= 10;
-            start += digit;
+        if (symbol == '.' || symbol == ',') {
             ++ *index;
 
+            after_dot = 0;
+            continue;
+        }
+
+        short digit = symbol - '0';
+
+        if (digit <= 9 && digit >= 0) {
+            if (after_dot >= 0) {
+                after_dot *= 10;
+                after_dot += digit;
+            } else {
+                before_dot *= 10;
+                before_dot += digit;
+            }
+
+            ++ *index;
             was_set = true;
-        } else return was_set ? start : -1;
+        } else {
+            while (after_dot > 1)
+                after_dot /= 10;
+
+            long double result = before_dot +
+                (after_dot < 0? 0 : after_dot);
+            return was_set ? result : -1;
+        }
     }
 }
 
@@ -103,7 +126,7 @@ void check_sqrt(int* index, char* text) {
 }
 
 struct stack* tokenize(struct stack* stack, char* text) {
-    bool should_be_unary = false;
+    bool should_be_unary = true;
     char symbol; long double value;
 
     for (int i = 0; (symbol = text[i]) != '\0'; ++ i) {
@@ -405,7 +428,8 @@ long double calculate_rpn_expression(struct stack* stack) {
                     break;
 
                 default: exit(1);
-            } }
+            }
+        }
 
         current = next;
     }
@@ -439,16 +463,17 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    int precision, start = 1;
+    int precision = -1, start = 1;
     if (argv[1][0] == ':') {
         int index = 1;
 
         precision = parse_value(&index, argv[1]);
-        if (precision < 0)
-            precision = 3;
-
         ++ start;
     }
+
+    if (precision < 0)
+        precision = 3;
+
 
     struct stack* stack = malloc(sizeof *stack);
 
