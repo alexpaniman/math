@@ -104,7 +104,7 @@ long double parse_value(int* index, char* text) {
             ++ *index;
             was_set = true;
         } else {
-            while (after_dot > 1)
+            while (after_dot >= 1)
                 after_dot /= 10;
 
             long double result = before_dot +
@@ -471,10 +471,6 @@ int main(int argc, char** argv) {
         ++ start;
     }
 
-    if (precision < 0)
-        precision = 3;
-
-
     struct stack* stack = malloc(sizeof *stack);
 
     for (int i = start; i < argc; ++ i)
@@ -485,6 +481,14 @@ int main(int argc, char** argv) {
 
     free(rpn);
     free(stack);
+
+    if (precision < 0) {
+        precision = 0;
+        long double discharge = 0;
+        
+        while ((long long) trunc(result * pow(10, ++ discharge)) % 10 > 0 && !(precision > 10))
+            ++ precision;
+    }
 
     char format[6];
     sprintf(format, "%%.%dLf", precision);
