@@ -3,6 +3,8 @@
 #include<stdlib.h>
 #include<stdbool.h>
 #include<string.h>
+#include<time.h>
+#include<unistd.h>
 
 enum operator {
     PLUS, MINUS, UNARY_PLUS, POWER,
@@ -130,7 +132,7 @@ struct stack* tokenize(struct stack* stack, char* text) {
     char symbol; long double value;
 
     for (int i = 0; (symbol = text[i]) != '\0'; ++ i) {
-        if (symbol == ' ')
+        if (symbol == ' ' || symbol == '\n')
             continue;
 
         long double number = parse_value(&i, text);
@@ -458,6 +460,11 @@ void print_usage(char* name) {
 }
 
 int main(int argc, char** argv) {
+//  Uncomment to get time measurment:
+
+//  struct timespec __start, __end;
+//  clock_gettime(CLOCK_REALTIME, &__start);
+
     if (argc < 2) {
         print_usage(argv[0]);
         exit(1);
@@ -491,7 +498,15 @@ int main(int argc, char** argv) {
     }
 
     char format[6];
-    sprintf(format, "%%.%dLf", precision);
+    sprintf(format, "%%.%dLf\n", precision);
 
     printf(format, result);
+    
+//  Uncomment to get time measurment:
+
+//  clock_gettime(CLOCK_REALTIME, &__end);
+//  double time_spent = (__end.tv_sec  - __start.tv_sec) +
+//						(__end.tv_nsec - __start.tv_nsec) / 1000000000.0;
+
+//  printf("time: %lf seconds", time_spent);
 }
